@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>🎙️ Sistema Inteligente de Personas</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-6">
+
+  <!-- Encabezado -->
+  <header class="flex justify-between items-center mb-8">
+    <div>
+      <h1 class="text-4xl font-bold text-blue-400">🧠 Sistema de Registro</h1>
+      <p class="text-gray-300 text-lg">Administra, escucha y actúa con inteligencia artificial 🗣️💾</p>
+    </div>
+    <button onclick="iniciarReconocimiento()" class="bg-pink-600 hover:bg-pink-700 px-4 py-2 rounded">🎙️ Usar Voz</button>
+  </header>
+
+  <!-- Formulario -->
+  <div class="max-w-3xl mx-auto">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+      <input id="nombre" type="text" placeholder="👤 Nombre" class="bg-gray-800 text-white p-2 rounded w-full" />
+      <input id="edad" type="number" placeholder="🎂 Edad" class="bg-gray-800 text-white p-2 rounded w-full" />
+      <button onclick="guardarDato()" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded w-full">💾 Guardar</button>
+    </div>
+
+    <!-- Botón de archivo -->
+    <div class="mb-4">
+      <label class="inline-block mb-1 text-sm text-gray-300">📁 Seleccionar archivo</label>
+      <input type="file" id="archivo" class="bg-gray-800 text-white p-2 rounded w-full cursor-pointer" />
+      <p id="archivo-nombre" class="mt-2 text-sm text-green-400"></p>
+    </div>
+
+    <!-- Botones de exportar -->
+    <div class="flex justify-end mb-4 gap-4">
+      <button onclick="exportarExcel()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded">📤 Exportar a Excel</button>
+      <a id="descargarExcel" class="hidden bg-green-700 hover:bg-green-800 px-4 py-2 rounded text-white" download="personas.xlsx">⬇️ Descargar Excel</a>
+    </div>
+
+    <!-- Tabla -->
+    <div class="overflow-x-auto">
+      <table class="w-full border-collapse border border-gray-700">
+        <thead>
+          <tr class="bg-gray-800 text-white">
+            <th class="p-2 border border-gray-600">Nombre</th>
+            <th class="p-2 border border-gray-600">Edad</th>
+            <th class="p-2 border border-gray-600">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="tabla"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    let datos = JSON.parse(localStorage.getItem('personas')) || [];
+
+    // Reconocimiento de voz
+    const reconocimiento = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    reconocimiento.lang = "es-ES";
+
+    let esperandoCampo = null;
+
+    function iniciarReconocimiento() {
+      Swal.fire('🎤 Hable ahora', 'Di tu nombre', 'info');
+      esperandoCampo = 'nombre';
+      reconocimiento.start();
+    }
+
+    reconocimiento.onresult = (event) => {
+      const resultado = event.results[0][0].transcript.trim();
+      if (esperandoCampo === 'nombre') {
+        document.getElementById('nombre').value = resultado;
+        Swal.fire('✅ Nombre recibido', `Hola, ${resultado}`, 'success');
+        esperandoCampo = 'edad';
+        setTimeout(() => {
+          Swal.fire('🎤 Edad', 'Ahora di tu edad', 'info');
+          reconocimiento.start();
+        }, 1000);
+      } else if (esperandoCampo === 'edad') {
+        document.getElementById('edad').value = resultado;
+        Swal.fire('✅ Edad recibida', `Edad: ${resultado}`, 'success');
+        esperandoCampo = null;
+        guardarDato();
+      }
+    };
+
+    reconocimiento.onerror = (e) => {
+      console.error("Error de voz:", e.error);
+      Swal.fire('❌ Error de reconocimiento', 'Inténtalo de nuevo', 'error');
+    };
+
+    function guardarDato() {
+      const nombre = document.getElementById('nombre').value.trim();
+      const edad = document.getElementById('edad').value.trim();
+
+      if (!nombre || !edad) {
+        Swal.fire('⚠️ Campos requeridos', 'Completa ambos campos', 'warning');
+        return;
+      }
+
+      datos.push({ nombre, edad });
+      localStorage.setItem('personas', JSON.stringify(datos));
+      document.getElementById('nombre').value = '';
+      document.getElementById('edad').value = '';
+      renderTabla();
+
+      Swal.fire('✅ Guardado', 'Registro agregado correctamente', 'success');
+    }
+
+    function editarFila(index) {
+      datos[index].editando = true;
+      renderTabla();
+    }
+
+    function guardarEdicion(index) {
+      const nuevoNombre = document.getElementById(`edit-nombre-${index}`).value.trim();
+      const nuevaEdad = document.getElementById(`edit-edad-${index}`).value.trim();
+
+      if (!nuevoNombre || !nuevaEdad) {
+        Swal.fire('⚠️ Campos requeridos', 'Completa ambos campos', 'warning');
+        return;
+      }
+
+      datos[index] = { nombre: nuevoNombre, edad: nuevaEdad };
+      localStorage.setItem('personas', JSON.stringify(datos));
+      renderTabla();
+
+      Swal.fire('✏️ Actualizado', 'El registro ha sido modificado', 'success');
+    }
+
+    function cancelarEdicion(index) {
+      delete datos[index].editando;
+      renderTabla();
+    }
+
+    function eliminarFila(index) {
+      Swal.fire({
+        title: '¿Estás seguro?',
+        text: '¡No podrás revertir esto!',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#e3342f',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          datos.splice(index, 1);
+          localStorage.setItem('personas', JSON.stringify(datos));
+          renderTabla();
+          Swal.fire('🗑️ Eliminado', 'El registro ha sido eliminado', 'success');
+        }
+      });
+    }
+
+    function exportarExcel() {
+      if (datos.length === 0) {
+        Swal.fire('ℹ️ Sin datos', 'No hay registros para exportar', 'info');
+        return;
+      }
+
+      const hoja = XLSX.utils.json_to_sheet(datos);
+      const libro = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(libro, hoja, "Personas");
+
+      const excelBinario = XLSX.write(libro, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([excelBinario], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+
+      const enlace = document.getElementById("descargarExcel");
+      enlace.href = url;
+      enlace.classList.remove("hidden");
+
+      Swal.fire('✅ Listo', 'Haz clic en "Descargar Excel"', 'success');
+    }
+
+    function renderTabla() {
+      const tbody = document.getElementById('tabla');
+      tbody.innerHTML = '';
+
+      datos.forEach((dato, index) => {
+        const fila = document.createElement('tr');
+
+        if (dato.editando) {
+          fila.innerHTML = `
+            <td class="p-2 border border-gray-600">
+              <input id="edit-nombre-${index}" value="${dato.nombre}" class="bg-gray-700 text-white p-1 rounded w-full" />
+            </td>
+            <td class="p-2 border border-gray-600">
+              <input id="edit-edad-${index}" value="${dato.edad}" class="bg-gray-700 text-white p-1 rounded w-full" />
+            </td>
+            <td class="p-2 border border-gray-600 space-x-1">
+              <button onclick="guardarEdicion(${index})" class="bg-blue-600 px-3 py-1 rounded hover:bg-blue-700">💾</button>
+              <button onclick="cancelarEdicion(${index})" class="bg-gray-600 px-3 py-1 rounded hover:bg-gray-700">❌</button>
+            </td>
+          `;
+        } else {
+          fila.innerHTML = `
+            <td class="p-2 border border-gray-600">${dato.nombre}</td>
+            <td class="p-2 border border-gray-600">${dato.edad}</td>
+            <td class="p-2 border border-gray-600 space-x-1">
+              <button onclick="editarFila(${index})" class="bg-yellow-500 text-black px-3 py-1 rounded hover:bg-yellow-600">✏️</button>
+              <button onclick="eliminarFila(${index})" class="bg-red-600 px-3 py-1 rounded hover:bg-red-700">🗑️</button>
+            </td>
+          `;
+        }
+
+        tbody.appendChild(fila);
+      });
+    }
+
+    // Mostrar nombre del archivo seleccionado
+    document.getElementById('archivo').addEventListener('change', function () {
+      const archivo = this.files[0];
+      const nombre = archivo ? archivo.name : 'No se seleccionó ningún archivo';
+      document.getElementById('archivo-nombre').textContent = `📄 Archivo seleccionado: ${nombre}`;
+    });
+
+    // Inicializar
+    renderTabla();
+  </script>
+</body>
+</html>
